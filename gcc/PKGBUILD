@@ -17,10 +17,16 @@ msys2_references=(
   "cpe: cpe:/a:gnu:gcc"
 )
 makedepends=('gcc' 'binutils' 'autotools'
-             'mpc-devel' 'gmp-devel' 'mpfr-devel' 'isl-devel' 'zlib-devel'
+             'mpc-devel' 'gmp-devel' 'mpfr-devel' 'zlib-devel'
              'windows-default-manifest' 'gperf')
 options=('!emptydirs') # '!strip' 'debug')
+_sourcedir=gcc-${pkgver}
+ISL_VERSION=0.24
+noextract=("isl-${ISL_VERSION}.tar.bz2") # "gcc-${pkgver}.tar.xz")
 source=(https://ftp.gnu.org/gnu/gcc/gcc-${pkgver}/gcc-${pkgver}.tar.xz
+        https://gcc.gnu.org/pub/gcc/infrastructure/isl-${ISL_VERSION}.tar.bz2
+        #https://libisl.sourceforge.io/isl-${ISL_VERSION}.tar.bz2
+        isl-0.14.1-no-undefined.patch
         0001-Cygwin-use-SysV-ABI-on-x86_64.patch
         0002-Cygwin-add-dummy-pthread-tsaware-and-large-address-a.patch
         0003-Cygwin-handle-dllimport-properly-in-medium-model-V2.patch
@@ -38,6 +44,8 @@ source=(https://ftp.gnu.org/gnu/gcc/gcc-${pkgver}/gcc-${pkgver}.tar.xz
         0951-11.2.0-msys2-spec.patch
         0953-11.2.0-testsuite-msys2.patch)
 sha256sums=('e275e76442a6067341a27f04c5c6b83d8613144004c0413528863dc6b5c743da'
+            'fcf78dd9656c10eb8cf9fbd5f59a0b6b01386205fe1934b3b287a0a1898145c0'
+            '83655a7202f0a0dcce1782d4b365252bf1ad12a522b7ad82ab578ee5ec46433b'
             'bc788aa466a83184d285cc2f6c1ffc40c6ed416dd08c6999015262a53f1ab1b5'
             '704acfaeb11d24d3fe5aab34bc883c184ca93aff03d752016c9a50fdd82c5655'
             'c5676fd62d5f7f69be26062b95d42ef47f28151af83b83efa3998ecd8e939e19'
@@ -54,13 +62,17 @@ sha256sums=('e275e76442a6067341a27f04c5c6b83d8613144004c0413528863dc6b5c743da'
             '8a29a40ee426ee786da97656c35d2e9c17838b12c1b750cecf857760da273381'
             '959ef644853398fe6f2c291a43e5e5bfac4dc973ce6ae7ff23734135cb9a5b60'
             'adb8baaa35dcfbea9ab60694262d0958e090495146d50df1a0844a977832aef9')
-
-# Helper macros to help make tasks easier #
+# =========================================== #
+# Helper macros to help make tasks easier     #
 apply_patch_with_msg() {
-  for _fname in "$@"
+  for _patch in "$@"
   do
-    msg2 "Applying ${_fname}"
-    patch -Nbp1 -i "${srcdir}"/${_fname}
+    if patch --dry-run -Rbp1 -i "${srcdir}/${_patch}" > /dev/null 2>&1 ; then
+      msg2 "Skipping ${_patch} because it likely was already applied"
+    else
+      msg2 "Applying ${_patch}"
+      patch -Nbp1 -i "${srcdir}/${_patch}"
+    fi
   done
 }
 
@@ -72,9 +84,31 @@ del_file_exists() {
     fi
   done
 }
+
+_extract_to_gcc_folder() {
+    local tarfile="$1"
+    local subfolder="$(echo "$tarfile" | sed 's/-.*$//')"
+    if [ ! -d  "$_sourcedir/$subfolder" ]; then
+        echo "Extracting ${tarfile} to $_sourcedir/$subfolder"
+        mkdir -p "$_sourcedir/$subfolder"
+        tar -x --strip-components=1 -f "$tarfile" -C "$_sourcedir/$subfolder"
+    else
+        echo "Folder $_sourcedir/$subfolder already exists"
+    fi
+}
 # =========================================== #
 
 prepare() {
+  cd ${srcdir}
+  rm -fr ${srcdir}/${_sourcedir}/isl
+  _extract_to_gcc_folder          isl-${ISL_VERSION}.tar.bz2
+
+    cd ${srcdir}/${_sourcedir}/isl
+    apply_patch_with_msg \
+      isl-0.14.1-no-undefined.patch
+
+    autoreconf -fi
+
   cd ${srcdir}/gcc-${pkgver}
 
   # Remove files created by patches
@@ -169,7 +203,6 @@ build() {
     --disable-symvers \
     --with-gnu-ld \
     --with-gnu-as \
-    --disable-isl-version-check \
     --enable-checking=release \
     --without-libiconv-prefix \
     --without-libintl-prefix \
@@ -227,7 +260,7 @@ package_gcc-libs()
 package_gcc()
 {
   pkgdesc="The GNU Compiler Collection - C and C++ frontends"
-  depends=("gcc-libs=${pkgver}-${pkgrel}" 'binutils' 'gmp' 'isl' 'mpc' 'mpfr' 'msys2-runtime-devel' 'msys2-w32api-headers' 'msys2-w32api-runtime' 'windows-default-manifest')
+  depends=("gcc-libs=${pkgver}-${pkgrel}" 'binutils' 'gmp' 'mpc' 'mpfr' 'msys2-runtime-devel' 'msys2-w32api-headers' 'msys2-w32api-runtime' 'windows-default-manifest')
   #options=("!strip")
   provides=('msys2-devel')
   conflicts=('gcc-fortran<=11.3.0-4')
