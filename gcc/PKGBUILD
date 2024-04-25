@@ -116,6 +116,7 @@ prepare() {
 }
 
 build() {
+  rm -fr ${srcdir}/build-${CARCH}
   mkdir -p ${srcdir}/build-${CARCH} && cd ${srcdir}/build-${CARCH}
 
   case ${CARCH} in
